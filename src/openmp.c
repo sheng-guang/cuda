@@ -10,7 +10,7 @@ Image input_image;
 Image output_image;
 unsigned int tile_x_count, tile_y_count;
 unsigned long long* sums;
-unsigned char* output;
+unsigned char* mosaic;
 
 int sums_count;
 int sums_len;
@@ -24,7 +24,7 @@ void openmp_begin(const Image* in) {
     sums = (unsigned long long*)malloc(tile_x_count * tile_y_count * in->channels * sizeof(unsigned long long));
 
     // Allocate buffer for storing the output pixel value of each tile
-    output = (unsigned char*)malloc(tile_x_count * tile_y_count * in->channels * sizeof(unsigned char));
+    mosaic = (unsigned char*)malloc(tile_x_count * tile_y_count * in->channels * sizeof(unsigned char));
 
     // Allocate copy of input image
     input_image = *in;
@@ -98,8 +98,8 @@ void openmp_stage2(unsigned char* output_global_average) {
         long long sum=0;
         #pragma omp parallel for reduction(+: sum)
         for (t = 0; t < tile_x_y_total; ++t) {
-            output[t * channels + ch] = (unsigned char)(sums[t * channels + ch] / TILE_PIXELS);  // Integer division is fine here
-            sum += output[t * channels + ch];
+            mosaic[t * channels + ch] = (unsigned char)(sums[t * channels + ch] / TILE_PIXELS);  // Integer division is fine here
+            sum += mosaic[t * channels + ch];
         }
         whole_image_sum[ch] = sum;
     }
@@ -112,7 +112,7 @@ void openmp_stage2(unsigned char* output_global_average) {
     }
 #ifdef VALIDATION
     // TODO: Uncomment and call the validation functions with the correct inputs
-    validate_compact_mosaic(tile_x_count, tile_y_count, sums, output, output_global_average);
+    validate_compact_mosaic(tile_x_count, tile_y_count, sums, mosaic, output_global_average);
 #endif    
 }
 
@@ -146,14 +146,14 @@ void openmp_stage3() {
 
                     const unsigned int pixel_offset = (p_y * wide + p_x) * channels;
                     // Copy whole pixel
-                    memcpy(output_image.data + tile_offset + pixel_offset, output + tile_index, channels);
+                    memcpy(output_image.data + tile_offset + pixel_offset, mosaic + tile_index, channels);
                 }
             }
         }
     }
 #ifdef VALIDATION
     // TODO: Uncomment and call the validation function with the correct inputs
-    validate_broadcast(&input_image, output, &output_image);
+    validate_broadcast(&input_image, mosaic, &output_image);
 #endif    
 }
 void openmp_end(Image* out) {
@@ -164,7 +164,7 @@ void openmp_end(Image* out) {
     // Release allocations
     free(output_image.data);
     free(input_image.data);
-    free(output);
+    free(mosaic);
     free(sums);
 }
 
