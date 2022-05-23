@@ -5,19 +5,6 @@
 #include <string.h>
 
 
-//Validation Status :
-//Image width : Pass
-//Image height : Pass
-//Image pixels : Pass(0 / 1048576 wrong)
-//Global Image Average Pixel Value : Pass
-//CPU Average execution timing from 100 runs
-//Code built as DEBUG, timing results are invalid!
-//Init : 2.113ms
-//Stage 1 : 12.384ms
-//Stage 2 : 0.094ms
-//Stage 3 : 5.395ms
-//Free : 1.248ms
-//Total : 21.234ms
 
 //Validation Status :
 //Image width : Pass

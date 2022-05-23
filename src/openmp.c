@@ -60,12 +60,11 @@ void openmp_stage1() {
             for (ch = 0; ch < channels; ++ch) {
                 
                 long long sum = 0;
-                int p_x;
-#pragma omp parallel for reduction(+: sum)
+                int p_y;
+#pragma omp parallel for reduction(+: sum) num_threads(8)
+                for (p_y = 0; p_y < TILE_SIZE; ++p_y) {
+                    int p_x;
                 for ( p_x = 0; p_x < TILE_SIZE; ++p_x) {
-                    int p_y;
-                    //#pragma omp parallel for
-                    for (p_y = 0; p_y < TILE_SIZE; ++p_y) {
                         // For each colour channel
                         const unsigned int pixel_offset = (p_y * wide + p_x) * channels;
                         // Load pixel
@@ -136,13 +135,15 @@ void openmp_stage3() {
             const unsigned int tile_offset = (t_y * tile_x_count * TILE_SIZE * TILE_SIZE + t_x * TILE_SIZE) * channels;
 
             // For each pixel within the tile
-            int p_x;
-#pragma omp parallel for
-            for ( p_x = 0; p_x < TILE_SIZE; ++p_x) {
-
-                int p_y;
+            int p_y;
+           
+#pragma omp parallel for 
+            for (p_y = 0; p_y < TILE_SIZE; ++p_y) {
+                int p_x;
 //#pragma omp parallel for
-                for (p_y = 0; p_y < TILE_SIZE; ++p_y) {
+                for (p_x = 0; p_x < TILE_SIZE; ++p_x) {
+
+
                     const unsigned int pixel_offset = (p_y * wide + p_x) * channels;
                     // Copy whole pixel
                     memcpy(output_image.data + tile_offset + pixel_offset, output + tile_index, channels);
