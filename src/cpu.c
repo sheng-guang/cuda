@@ -66,6 +66,7 @@ void cpu_stage1() {
                     for (int ch = 0; ch < cpu_input_image.channels; ++ch) {
                         // Load pixel
                         const unsigned char pixel = cpu_input_image.data[tile_offset + pixel_offset + ch];
+                        //printf("%d->%d\n", tile_offset + pixel_offset + ch, tile_index + ch);
                         cpu_mosaic_sum[tile_index + ch] += pixel;
                     }
                 }
