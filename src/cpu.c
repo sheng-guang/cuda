@@ -6,19 +6,6 @@
 
 
 
-//Validation Status :
-//Image width : Pass
-//Image height : Pass
-//Image pixels : Pass(0 / 4194304 wrong)
-//Global Image Average Pixel Value : Pass
-//CPU Average execution timing from 100 runs
-//Code built as DEBUG, timing results are invalid!
-//Init : 6.063ms
-//Stage 1 : 41.278ms
-//Stage 2 : 0.406ms
-//Stage 3 : 27.985ms
-//Free : 3.711ms
-//Total : 79.443ms
 ///
 /// Algorithm storage
 ///
