@@ -109,21 +109,18 @@ int cfg1(int total,int cfg2) {
 
 
 //1-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-//template <unsigned int blockSize>
+template <unsigned int blockSize>
 __device__ void warpReduce(volatile unsigned long long* sdata, unsigned int tid) {
-    sdata[tid] += sdata[tid + 32];
-    sdata[tid] += sdata[tid + 16];
-    sdata[tid] += sdata[tid + 8];
-    sdata[tid] += sdata[tid + 4];
-    sdata[tid] += sdata[tid + 2];
-    sdata[tid] += sdata[tid + 1];
-    //if (blockSize >= 64) sdata[tid] += sdata[tid + 32];
-    //if (blockSize >= 32) sdata[tid] += sdata[tid + 16];
-    //if (blockSize >= 16) sdata[tid] += sdata[tid + 8];
-    //if (blockSize >= 8) sdata[tid] += sdata[tid + 4];
-    //if (blockSize >= 4) sdata[tid] += sdata[tid + 2];
-    //if (blockSize >= 2) sdata[tid] += sdata[tid + 1];
+
+    if (blockSize >= 64) sdata[tid] += sdata[tid + 32];
+    if (blockSize >= 32) sdata[tid] += sdata[tid + 16];
+    if (blockSize >= 16) sdata[tid] += sdata[tid + 8];
+    if (blockSize >= 8) sdata[tid] += sdata[tid + 4];
+    if (blockSize >= 4) sdata[tid] += sdata[tid + 2];
+    if (blockSize >= 2) sdata[tid] += sdata[tid + 1];
 }
+
+template <unsigned int blockSize>
 __global__
 void sum(int n, unsigned char* d_input_image_data, unsigned long long* d_sums
     ,int tile_x_count,int channels,int wide) 
@@ -143,7 +140,7 @@ void sum(int n, unsigned char* d_input_image_data, unsigned long long* d_sums
     int offset_y = TILE_SIZE / 2 * wide*channels;
 
     int tid = threadIdx.y * blockDim.x + threadIdx.x;
-    int blockSize = TILE_PIXELS/4;
+    //int blockSize = TILE_PIXELS/4;
 
     int ch = blockIdx.z;
 
@@ -153,28 +150,21 @@ void sum(int n, unsigned char* d_input_image_data, unsigned long long* d_sums
         d_input_image_data[data_index + offset_x +offset_y+ ch];
     __syncthreads();
 
-    //// do reduction in shared mem
-    //for (unsigned int s = 1; s < blockSize; s *= 2) {
-    //    if (tid % (2 * s) == 0) {
+
+    //for (unsigned int s = blockSize / 2; s > 32; s >>= 1) {
+    //    if (tid < s) {
     //        sdata[tid] += sdata[tid + s];
     //    }
     //    __syncthreads();
     //}
 
-    //for (unsigned int s = 1; s < blockSize; s *= 2) {
-    //    int index = 2 * s * tid;
-    //    if (index < blockSize) {
-    //        sdata[index] += sdata[index + s];
-    //    }
-    //    __syncthreads();
-    //}
-    for (unsigned int s = blockSize / 2; s > 32; s >>= 1) {
-        if (tid < s) {
-            sdata[tid] += sdata[tid + s];
-        }
-        __syncthreads();
-    }
-    if (tid < 32) warpReduce(sdata, tid);
+
+    if (blockSize >= 512) { if (tid < 256) { sdata[tid] += sdata[tid + 256]; } __syncthreads(); }
+    if (blockSize >= 256) { if (tid < 128) { sdata[tid] += sdata[tid + 128]; } __syncthreads(); }
+    if (blockSize >= 128) { if (tid < 64) { sdata[tid] += sdata[tid + 64]; } __syncthreads(); }
+    if (tid < 32) warpReduce<blockSize>(sdata, tid);
+
+
     int T_Index = (t_y * tile_x_count + t_x) * channels;
     // write result for this block to global mem
     if (tid == 0) d_sums[T_Index+ch] = sdata[0];
@@ -202,7 +192,7 @@ void cuda_stage1() {
     threads.x = TILE_SIZE/2;
     threads.y = TILE_SIZE/2;
     threads.z = 1;
-    sum<<<blocks, threads >>>(tx_ty_c, d_input_image_data, d_sums
+    sum<TILE_PIXELS / 4> <<<blocks, threads >>>(tx_ty_c, d_input_image_data, d_sums
         , tile_x_count, channels,wide);
 
 #ifdef VALIDATION
