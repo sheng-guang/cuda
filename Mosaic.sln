@@ -27,6 +27,8 @@ Global
 		2openmp_4096|x86 = 2openmp_4096|x86
 		2openmp_validation|x64 = 2openmp_validation|x64
 		2openmp_validation|x86 = 2openmp_validation|x86
+		3_gpu_v_256|x64 = 3_gpu_v_256|x64
+		3_gpu_v_256|x86 = 3_gpu_v_256|x86
 		3gpu_0256|x64 = 3gpu_0256|x64
 		3gpu_0256|x86 = 3gpu_0256|x86
 		3gpu_1024|x64 = 3gpu_1024|x64
@@ -73,6 +75,9 @@ Global
 		{4F218AF7-DB0C-4B45-9B51-3A4B673DA8BC}.2openmp_validation|x64.ActiveCfg = 2openmp_validation|x64
 		{4F218AF7-DB0C-4B45-9B51-3A4B673DA8BC}.2openmp_validation|x64.Build.0 = 2openmp_validation|x64
 		{4F218AF7-DB0C-4B45-9B51-3A4B673DA8BC}.2openmp_validation|x86.ActiveCfg = 2openmp_validation|x64
+		{4F218AF7-DB0C-4B45-9B51-3A4B673DA8BC}.3_gpu_v_256|x64.ActiveCfg = 3_gpu_v_256|x64
+		{4F218AF7-DB0C-4B45-9B51-3A4B673DA8BC}.3_gpu_v_256|x64.Build.0 = 3_gpu_v_256|x64
+		{4F218AF7-DB0C-4B45-9B51-3A4B673DA8BC}.3_gpu_v_256|x86.ActiveCfg = 3_gpu_v_256|x64
 		{4F218AF7-DB0C-4B45-9B51-3A4B673DA8BC}.3gpu_0256|x64.ActiveCfg = 3gpu_0256|x64
 		{4F218AF7-DB0C-4B45-9B51-3A4B673DA8BC}.3gpu_0256|x64.Build.0 = 3gpu_0256|x64
 		{4F218AF7-DB0C-4B45-9B51-3A4B673DA8BC}.3gpu_0256|x86.ActiveCfg = 3gpu_0256|x64

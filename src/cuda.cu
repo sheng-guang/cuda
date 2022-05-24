@@ -97,35 +97,53 @@ int cfg1(int total,int cfg2) {
 
 //1-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+__device__
+void sum_4(int count, unsigned long long* from, unsigned long long* to, int _channel) {
 
+}
+__device__
+void sum() {
+
+}
 __global__
 void sum(int n, unsigned char* d_input_image_data, unsigned long long* d_sums
     ,int tile_x_count,int channels,int wide) 
 {
+    int t_x = blockIdx.x;
+    int t_y = blockIdx.y;
+    int ch = blockIdx.z;
 
-    unsigned int sum_index= blockDim.x*blockIdx.x+ threadIdx.x;
-    if (sum_index >= n)return;
-
-    int t_y = sum_index / (tile_x_count*channels);
-    int t_x = (sum_index - t_y * (tile_x_count * channels))/channels;
-    int ch = sum_index - t_y * (tile_x_count * channels) - t_x * channels;
+    int p_x = threadIdx.x;
+    int p_y = threadIdx.y;
+    //printf("%d,%d,%d,%d,\n", t_x, t_y, p_x, p_y);
     const unsigned int tile_offset = (t_y * tile_x_count * TILE_SIZE * TILE_SIZE + t_x * TILE_SIZE) * channels;
+    const unsigned int pixel_offset = (p_y * wide + p_x) * channels;
+    int data_index = tile_offset + pixel_offset;
 
-    long long sum = 0;
-    int p_y;
-    for (p_y = 0; p_y < TILE_SIZE; ++p_y) {
-        int p_x;
-        for (p_x = 0; p_x < TILE_SIZE; ++p_x) {
-            // For each colour channel
-            const unsigned int pixel_offset = (p_y * wide + p_x) * channels;
-            // Load pixel
-            const unsigned char pixel = d_input_image_data[tile_offset + pixel_offset + ch];
-            sum += pixel;
+
+    int tid = threadIdx.y * blockDim.x + threadIdx.x;
+    int blockSize = TILE_PIXELS;
+    __shared__ unsigned long long sdata[TILE_PIXELS];
+    sdata[tid] = d_input_image_data[data_index + ch];
+    __syncthreads();
+
+    // do reduction in shared mem
+    for (unsigned int s = 1; s < blockSize; s *= 2) {
+        if (tid % (2 * s) == 0) {
+            sdata[tid] += sdata[tid + s];
         }
+        __syncthreads();
     }
-    d_sums[sum_index] = sum;
+
+    int T_Index = (t_y * tile_x_count + t_x) * channels;
+    // write result for this block to global mem
+    if (tid == 0) d_sums[T_Index+ch] = sdata[0];
+
 }
+
+
 //0.271ms
+//4096:6.693ms
 void cuda_stage1() {
     // Optionally during development call the skip function with the correct inputs to skip this stage
     //skip_tile_sum(&input_image, sums);
@@ -133,8 +151,17 @@ void cuda_stage1() {
     //printf("tile count: %d\n", tx_ty_c/channels);
     //printf("channels count: %d\n",channels);
 
-    int c1 = cfg1(tx_ty_c, 32);
-    sum<<<c1,32>>>(tx_ty_c, d_input_image_data, d_sums
+    //int c1 = cfg1(tx_ty_c, 32);
+    dim3 blocks;
+    blocks.x = tile_x_count;
+    blocks.y = tile_y_count;
+    blocks.z = channels;
+
+    dim3 threads;
+    threads.x = TILE_SIZE;
+    threads.y = TILE_SIZE;
+    threads.z = 1;
+    sum<<<blocks, threads >>>(tx_ty_c, d_input_image_data, d_sums
         , tile_x_count, channels,wide);
 
 #ifdef VALIDATION
