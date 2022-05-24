@@ -33,6 +33,9 @@ size_t tx_ty_c;
 size_t tx_ty;
 int channels;
 int wide;
+
+
+
 //VALIDATION-------------------------------------------------------------------------------------------------------------------
 #ifdef VALIDATION
 unsigned long long* sums;
@@ -83,27 +86,43 @@ void cuda_begin(const Image *in) {
     CUDA_CALL(cudaMalloc(&d_global_pixel_sum_origin, tx_ty_c * sizeof(unsigned long long)));
     CUDA_CALL(cudaMalloc(&d_global_pixel_sum_result, tx_ty_c * sizeof(unsigned long long)));
 
+
+
 #ifdef VALIDATION
     output_image = *in;
     output_image.data = (unsigned char*)malloc(in->width * in->height * in->channels * sizeof(unsigned char));
 #endif
 
 }
+
+
+
 int cfg1(int total,int cfg2) {
     int re = total / cfg2;
     if (total % cfg2 != 0)re++;
     return re;
 }
 
+
+
+
+
+
 //1-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-__device__
-void sum_4(int count, unsigned long long* from, unsigned long long* to, int _channel) {
-
-}
-__device__
-void sum() {
-
+//template <unsigned int blockSize>
+__device__ void warpReduce(volatile unsigned long long* sdata, unsigned int tid) {
+    sdata[tid] += sdata[tid + 32];
+    sdata[tid] += sdata[tid + 16];
+    sdata[tid] += sdata[tid + 8];
+    sdata[tid] += sdata[tid + 4];
+    sdata[tid] += sdata[tid + 2];
+    sdata[tid] += sdata[tid + 1];
+    //if (blockSize >= 64) sdata[tid] += sdata[tid + 32];
+    //if (blockSize >= 32) sdata[tid] += sdata[tid + 16];
+    //if (blockSize >= 16) sdata[tid] += sdata[tid + 8];
+    //if (blockSize >= 8) sdata[tid] += sdata[tid + 4];
+    //if (blockSize >= 4) sdata[tid] += sdata[tid + 2];
+    //if (blockSize >= 2) sdata[tid] += sdata[tid + 1];
 }
 __global__
 void sum(int n, unsigned char* d_input_image_data, unsigned long long* d_sums
@@ -111,14 +130,13 @@ void sum(int n, unsigned char* d_input_image_data, unsigned long long* d_sums
 {
     int t_x = blockIdx.x;
     int t_y = blockIdx.y;
-    int ch = blockIdx.z;
-    const unsigned int tile_offset = (t_y * tile_x_count * TILE_SIZE * TILE_SIZE + t_x * TILE_SIZE) * channels;
+    unsigned int tile_offset = (t_y * tile_x_count * TILE_SIZE * TILE_SIZE + t_x * TILE_SIZE) * channels;
 
 
     int p_x = threadIdx.x;
     int p_y = threadIdx.y;
     //printf("%d,%d,%d,%d,\n", t_x, t_y, p_x, p_y);
-    const unsigned int pixel_offset = (p_y * wide + p_x) * channels;
+    unsigned int pixel_offset = (p_y * wide + p_x) * channels;
     int data_index = tile_offset + pixel_offset;
 
     int offset_x = TILE_SIZE / 2*channels;
@@ -126,6 +144,9 @@ void sum(int n, unsigned char* d_input_image_data, unsigned long long* d_sums
 
     int tid = threadIdx.y * blockDim.x + threadIdx.x;
     int blockSize = TILE_PIXELS/4;
+
+    int ch = blockIdx.z;
+
     __shared__ unsigned long long sdata[TILE_PIXELS/4];
     sdata[tid] = d_input_image_data[data_index + ch] + 
         d_input_image_data[data_index+offset_x + ch] + d_input_image_data[data_index+offset_y + ch] + 
@@ -147,12 +168,13 @@ void sum(int n, unsigned char* d_input_image_data, unsigned long long* d_sums
     //    }
     //    __syncthreads();
     //}
-    for (unsigned int s = blockSize / 2; s > 0; s >>= 1) {
+    for (unsigned int s = blockSize / 2; s > 32; s >>= 1) {
         if (tid < s) {
             sdata[tid] += sdata[tid + s];
         }
         __syncthreads();
     }
+    if (tid < 32) warpReduce(sdata, tid);
     int T_Index = (t_y * tile_x_count + t_x) * channels;
     // write result for this block to global mem
     if (tid == 0) d_sums[T_Index+ch] = sdata[0];
@@ -194,13 +216,24 @@ void cuda_stage1() {
 }
 
 //2-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-//void stage2_sum(unsigned char* mosaic, int  mosaic_count, int channels, unsigned long long* whole_sum)
-//{
-//    for (size_t i = 0; i < mosaic_count; i++) { int ch = i % channels;        whole_sum[ch] += mosaic[i]; }
-//}
 
+
+//__global__
+//void average(int n, unsigned long long* d_sums, unsigned long long* d_global_pixel_sum, unsigned char* d_mosaic_value,int count,int channels)
+//{
+//    unsigned int index = blockDim.x * blockIdx.x + threadIdx.x;
+//    if (index >= n)return;
+//    int sum_index = index * channels;
+//    for (int i = 0; i < channels; i++)
+//    {
+//        int to = sum_index + i;
+//        d_mosaic_value[to] = d_sums[to] / count;
+//        d_global_pixel_sum[to] = d_mosaic_value[to];
+//    }
+//
+//}
 __global__
-void average(int n, unsigned long long* d_sums, unsigned long long* d_global_pixel_sum, unsigned char* d_mosaic_value,int count)
+void average2(int n, unsigned long long* d_sums, unsigned long long* d_global_pixel_sum, unsigned char* d_mosaic_value, int count)
 {
     unsigned int index = blockDim.x * blockIdx.x + threadIdx.x;
     if (index >= n)return;
@@ -255,9 +288,13 @@ void sun_4_v2(int count, unsigned long long* arr, unsigned long long* sum, int _
 void cuda_stage2(unsigned char* output_global_average) {
     // Optionally during development call the skip function with the correct inputs to skip this stage
     //skip_compact_mosaic(tile_x_count, tile_y_count, sums, cpu_mosaic_value, output_global_average);
+    //{
+    //    int c1 = cfg1(tx_ty, 32);
+    //    average << <c1, 32 >> > (tx_ty, d_sums, d_global_pixel_sum_result, d_mosaic_value, TILE_PIXELS,channels);
+    //} 
     {
         int c1 = cfg1(tx_ty_c, 32);
-        average << <c1, 32 >> > (tx_ty_c, d_sums, d_global_pixel_sum_result, d_mosaic_value, TILE_PIXELS);
+        average2 << <c1, 32 >> > (tx_ty_c, d_sums, d_global_pixel_sum_result, d_mosaic_value, TILE_PIXELS);
     }
     //{
     //    int count = tx_ty;
@@ -312,29 +349,10 @@ void cuda_stage2(unsigned char* output_global_average) {
 //3-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
-__global__
-void broadcast(int w_h, unsigned char* d_output_image_data, unsigned char* mosaic_value
-    , const int count_in_tile_line, const int count_in_img_line, const int t_size
-    , const int tile_x_count,const int channels)
-{
-    unsigned int index = blockDim.x * blockIdx.x + threadIdx.x;
-    if (index >= w_h)return;
-    int t_y = index / count_in_tile_line;
-    int left = index % count_in_img_line;
-    int t_x = left / t_size;
-
-    int index1 = index * channels;
-    int index2 = (t_y * tile_x_count + t_x) * channels;
-
-    for (size_t i = 0; i < channels; i++)
-    {
-        d_output_image_data[index1 +i] = mosaic_value[index2 + i];
-    }
-}
 //__global__
-//void broadcast2(int w_h, unsigned char* d_output_image_data, unsigned char* mosaic_value
-//    , const int count_in_tile_line, const int count_in_img_line, const int t_size
-//    , const int tile_x_count, const int channels)
+//void broadcast(int w_h, unsigned char* d_output_image_data, unsigned char* mosaic_value
+//    ,  int count_in_tile_line,  int count_in_img_line,  int t_size
+//    ,  int tile_x_count, int channels)
 //{
 //    unsigned int index = blockDim.x * blockIdx.x + threadIdx.x;
 //    if (index >= w_h)return;
@@ -347,9 +365,10 @@ void broadcast(int w_h, unsigned char* d_output_image_data, unsigned char* mosai
 //
 //    for (size_t i = 0; i < channels; i++)
 //    {
-//        d_output_image_data[index1 + i] = mosaic_value[index2 + i];
+//        d_output_image_data[index1 +i] = mosaic_value[index2 + i];
 //    }
 //}
+
 
 //__global__
 //void broadcast2(int mosaic_count, unsigned char* d_output_image_data, unsigned char* d_mosaic_value
@@ -359,32 +378,84 @@ void broadcast(int w_h, unsigned char* d_output_image_data, unsigned char* mosai
 //    unsigned int mosaic_index = blockDim.x * blockIdx.x + threadIdx.x;
 //    if (mosaic_index >= mosaic_count)return;
 //
-//    int t_y = mosaic_index / (tile_x_count * channels);
-//    int t_x = (mosaic_index - t_y * (tile_x_count * channels)) / channels;
-//    int ch = mosaic_index - t_y * (tile_x_count * channels) - t_x * channels;
-//    const unsigned int tile_offset = (t_y * tile_x_count * TILE_SIZE * TILE_SIZE + t_x * TILE_SIZE) * channels;
+//    unsigned int t_y = mosaic_index / (tile_x_count * channels);
+//    unsigned int t_x = (mosaic_index - t_y * (tile_x_count * channels)) / channels;
+//    unsigned int ch = mosaic_index - t_y * (tile_x_count * channels) - t_x * channels;
+//    unsigned int tile_offset = (t_y * tile_x_count * TILE_SIZE * TILE_SIZE + t_x * TILE_SIZE) * channels;
 //
-//    int p_y;
+//    unsigned int p_y;
 //    for (p_y = 0; p_y < TILE_SIZE; ++p_y) {
-//        int p_x;
+//        unsigned int p_x;
 //        for (p_x = 0; p_x < TILE_SIZE; ++p_x) {
 //            // For each colour channel
-//            const unsigned int pixel_offset = (p_y * wide + p_x) * channels;
+//            unsigned int pixel_offset = (p_y * wide + p_x) * channels;
 //            // Load pixel
 //            d_output_image_data[tile_offset + pixel_offset + ch] = d_mosaic_value[mosaic_index];
 //        }
 //    }
 //}
+__global__
+void broadcast3(unsigned char* d_output_image_data, unsigned char* mosaic_value
+    , unsigned int tile_x_count, unsigned int channels, unsigned int wide)
+{
+    //if (blockIdx.z >= channels)return;
+//#define t_x  blockIdx.x
+//#define  t_y  blockIdx.y
+    unsigned int t_x = blockIdx.x;
+    unsigned int t_y = blockIdx.y;
+    unsigned int tile_index = (t_y * tile_x_count + t_x) * channels;
+    unsigned int tile_offset = (t_y * tile_x_count * TILE_PIXELS + t_x * TILE_SIZE) * channels;
+
+//#define p_x  threadIdx.x
+//#define  p_y  threadIdx.y
+    unsigned int p_x = threadIdx.x;
+    unsigned int p_y = threadIdx.y;
+    unsigned int pixel_offset = (p_y * wide + p_x) * channels;
+    unsigned int data_index = tile_offset + pixel_offset;
+
+    //#define  ch  blockIdx.z
+
+        //unsigned int ch = blockIdx.z;
+
+    int offset_x = TILE_SIZE / 2 * channels;
+    int offset_y = TILE_SIZE / 2 * wide * channels;
+    for (int ch = 0; ch < channels; ch++)
+    {
+        d_output_image_data[data_index + ch] = mosaic_value[tile_index + ch];
+        d_output_image_data[data_index + ch + offset_x] = mosaic_value[tile_index + ch];
+        d_output_image_data[data_index + ch + offset_y] = mosaic_value[tile_index + ch];
+        d_output_image_data[data_index + ch + offset_x + offset_y] = mosaic_value[tile_index + ch];
+    }
+}
 
 //1.104ms
 void cuda_stage3() {
+    //{
+    //    int c1 = cfg1(w_h, 32);
+    //    broadcast << <c1, 32 >> > (w_h, d_output_image_data, d_mosaic_value
+    //        , tile_x_count * TILE_PIXELS, wide, TILE_SIZE
+    //        , tile_x_count, channels);
+    //}
 
-    int c1 = cfg1(w_h, 32);
-    broadcast <<<c1, 32 >> > (w_h, d_output_image_data, d_mosaic_value
-        , tile_x_count * TILE_PIXELS, wide, TILE_SIZE
-        ,tile_x_count,channels);
-    //broadcast2 << <c1, 32 >> > (tx_ty_c, d_output_image_data, d_mosaic_value
-    //    , tile_x_count, channels, wide);
+    //{
+    //    broadcast2 << <c1, 32 >> > (tx_ty_c, d_output_image_data, d_mosaic_value
+    //        , tile_x_count, channels, wide);
+    //}
+
+
+    {
+        dim3 blocks_3;
+        dim3 threads_3;
+        blocks_3.x = tile_x_count;
+        blocks_3.y = tile_y_count;
+        blocks_3.z = 1;
+
+        threads_3.x = TILE_SIZE / 2;
+        threads_3.y = TILE_SIZE / 2;
+        threads_3.z = 1;
+        broadcast3 << <blocks_3, threads_3 >> > (d_output_image_data, d_mosaic_value,
+            tile_x_count, channels, wide);
+    }
 #ifdef VALIDATION
     // TODO: Uncomment and call the validation function with the correct inputs
     // You will need to copy the data back to host before passing to these functions
