@@ -396,24 +396,19 @@ __global__
 void broadcast3(unsigned char* d_output_image_data, unsigned char* mosaic_value
     , unsigned int tile_x_count, unsigned int channels, unsigned int wide)
 {
-    //if (blockIdx.z >= channels)return;
-//#define t_x  blockIdx.x
-//#define  t_y  blockIdx.y
+
     unsigned int t_x = blockIdx.x;
     unsigned int t_y = blockIdx.y;
     unsigned int tile_index = (t_y * tile_x_count + t_x) * channels;
     unsigned int tile_offset = (t_y * tile_x_count * TILE_PIXELS + t_x * TILE_SIZE) * channels;
 
-//#define p_x  threadIdx.x
-//#define  p_y  threadIdx.y
+
     unsigned int p_x = threadIdx.x;
     unsigned int p_y = threadIdx.y;
     unsigned int pixel_offset = (p_y * wide + p_x) * channels;
     unsigned int data_index = tile_offset + pixel_offset;
 
-    //#define  ch  blockIdx.z
 
-        //unsigned int ch = blockIdx.z;
 
     int offset_x = TILE_SIZE / 2 * channels;
     int offset_y = TILE_SIZE / 2 * wide * channels;
