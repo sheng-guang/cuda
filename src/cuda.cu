@@ -13,14 +13,18 @@ Image input_image;
 unsigned int tile_x_count, tile_y_count;
 // Pointer to device buffer for calculating the sum of each tile mosaic, this must be passed to a kernel to be used on device
 unsigned long long* d_sums;
+
 // Pointer to device buffer for storing the output pixels of each tile, this must be passed to a kernel to be used on device
 unsigned char* d_mosaic_value;
+// Pointer to device buffer for the global pixel average sum, this must be passed to a kernel to be used on device
+unsigned long long* d_global_pixel_sum;
+
+
 // Pointer to device image data buffer, for storing the input image, this must be passed to a kernel to be used on device
 unsigned char* d_input_image_data;
 // Pointer to device image data buffer, for storing the output image data, this must be passed to a kernel to be used on device
 unsigned char* d_output_image_data;
-// Pointer to device buffer for the global pixel average sum, this must be passed to a kernel to be used on device
-unsigned long long* d_global_pixel_sum;
+
 size_t w_h_c_sizeof_c;
 size_t w_h_c;
 size_t tx_ty_c;
@@ -72,7 +76,7 @@ void cuda_begin(const Image *in) {
     CUDA_CALL(cudaMalloc(&d_output_image_data, w_h_c_sizeof_c));
 
     // Allocate and zero buffer for calculation global pixel average
-    CUDA_CALL(cudaMalloc(&d_global_pixel_sum, in->channels * sizeof(unsigned long long)));
+    CUDA_CALL(cudaMalloc(&d_global_pixel_sum, tx_ty_c * sizeof(unsigned long long)));
 
 #ifdef VALIDATION
     output_image = *in;
@@ -176,7 +180,7 @@ void sum_(unsigned char* arr, unsigned long long* sum,int to_channel,int channel
     // write result for this block to global mem
     if (tid == 0) sum[to_channel] = sdata[0];
 }
-
+ 
 //0.167ms
 void cuda_stage2(unsigned char* output_global_average) {
     // Optionally during development call the skip function with the correct inputs to skip this stage
@@ -285,6 +289,7 @@ void cuda_end(Image *out) {
     CUDA_CALL(cudaFree(d_sums));
     CUDA_CALL(cudaFree(d_input_image_data));
     CUDA_CALL(cudaFree(d_output_image_data));
+    CUDA_CALL(cudaFree(d_global_pixel_sum));
 #ifdef VALIDATION
     free(sums);
     free(cpu_mosaic_value);
