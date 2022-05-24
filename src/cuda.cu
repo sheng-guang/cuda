@@ -16,8 +16,8 @@ unsigned long long* d_sums;
 
 // Pointer to device buffer for storing the output pixels of each tile, this must be passed to a kernel to be used on device
 unsigned char* d_mosaic_value;
-// Pointer to device buffer for the global pixel average sum, this must be passed to a kernel to be used on device
-unsigned long long* d_global_pixel_sum;
+//// Pointer to device buffer for the global pixel average sum, this must be passed to a kernel to be used on device
+//unsigned long long* d_global_pixel_sum;
 
 
 // Pointer to device image data buffer, for storing the input image, this must be passed to a kernel to be used on device
@@ -76,7 +76,7 @@ void cuda_begin(const Image *in) {
     CUDA_CALL(cudaMalloc(&d_output_image_data, w_h_c_sizeof_c));
 
     // Allocate and zero buffer for calculation global pixel average
-    CUDA_CALL(cudaMalloc(&d_global_pixel_sum, tx_ty_c * sizeof(unsigned long long)));
+    //CUDA_CALL(cudaMalloc(&d_global_pixel_sum, tx_ty_c * sizeof(unsigned long long)));
 
 #ifdef VALIDATION
     output_image = *in;
@@ -151,9 +151,14 @@ void average(int n, unsigned long long* d_sums, unsigned char* d_mosaic_value,in
 {
     unsigned int index = blockDim.x * blockIdx.x + threadIdx.x;
     if (index >= n)return;
-    d_mosaic_value[index] = d_sums[index] / count;
+    d_sums[index] = d_sums[index] / count;
+    d_mosaic_value[index] = d_sums[index];
 }
 
+__global__
+void sun_4(unsigned long long* arr, unsigned long long* sum, int channels){
+
+}
 __global__ 
 void sum_(unsigned char* arr, unsigned long long* sum,int to_channel,int channels) {
     extern __shared__ int sdata[128];
@@ -191,12 +196,12 @@ void cuda_stage2(unsigned char* output_global_average) {
     while (++toChannel<channels)
     {
         //printf("%d\n", tx_ty);
-        sum_ << <1, tx_ty/2>> > (d_mosaic_value, d_global_pixel_sum, toChannel, channels);
+        sum_ << <1, tx_ty/2>> > (d_mosaic_value, d_sums, toChannel, channels);
     }
 
     unsigned long long whole_image_sum[4];
     cudaDeviceSynchronize();
-    CUDA_CALL(cudaMemcpy(whole_image_sum, d_global_pixel_sum, channels * sizeof(unsigned long long), cudaMemcpyDeviceToHost));
+    CUDA_CALL(cudaMemcpy(whole_image_sum, d_sums, channels * sizeof(unsigned long long), cudaMemcpyDeviceToHost));
    
     for (size_t i = 0; i < channels; i++)
     {
@@ -289,7 +294,7 @@ void cuda_end(Image *out) {
     CUDA_CALL(cudaFree(d_sums));
     CUDA_CALL(cudaFree(d_input_image_data));
     CUDA_CALL(cudaFree(d_output_image_data));
-    CUDA_CALL(cudaFree(d_global_pixel_sum));
+    //CUDA_CALL(cudaFree(d_global_pixel_sum));
 #ifdef VALIDATION
     free(sums);
     free(cpu_mosaic_value);
