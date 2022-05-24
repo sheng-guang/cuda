@@ -11,10 +11,23 @@ Image output_image;
 unsigned int tile_x_count, tile_y_count;
 unsigned long long* sums;
 unsigned char* mosaic;
-
 int sums_count;
 int sums_len;
 
+
+//Validation Status :
+//Image width : Pass
+//Image height : Pass
+//Image pixels : Pass(0 / 16777216 wrong)
+//Global Image Average Pixel Value : Pass
+//OpenMP Average execution timing from 100 runs
+//Code built as DEBUG, timing results are invalid!
+//Init : 19.800ms
+//Stage 1 : 32.034ms
+//Stage 2 : 0.187ms
+//Stage 3 : 16.608ms
+//Free : 16.591ms
+//Total : 85.221ms
 
 void openmp_begin(const Image* in) {
     tile_x_count = in->width / TILE_SIZE;
