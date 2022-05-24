@@ -112,29 +112,47 @@ void sum(int n, unsigned char* d_input_image_data, unsigned long long* d_sums
     int t_x = blockIdx.x;
     int t_y = blockIdx.y;
     int ch = blockIdx.z;
+    const unsigned int tile_offset = (t_y * tile_x_count * TILE_SIZE * TILE_SIZE + t_x * TILE_SIZE) * channels;
+
 
     int p_x = threadIdx.x;
     int p_y = threadIdx.y;
     //printf("%d,%d,%d,%d,\n", t_x, t_y, p_x, p_y);
-    const unsigned int tile_offset = (t_y * tile_x_count * TILE_SIZE * TILE_SIZE + t_x * TILE_SIZE) * channels;
     const unsigned int pixel_offset = (p_y * wide + p_x) * channels;
     int data_index = tile_offset + pixel_offset;
 
+    int offset_x = TILE_SIZE / 2*channels;
+    int offset_y = TILE_SIZE / 2 * wide*channels;
 
     int tid = threadIdx.y * blockDim.x + threadIdx.x;
-    int blockSize = TILE_PIXELS;
-    __shared__ unsigned long long sdata[TILE_PIXELS];
-    sdata[tid] = d_input_image_data[data_index + ch];
+    int blockSize = TILE_PIXELS/4;
+    __shared__ unsigned long long sdata[TILE_PIXELS/4];
+    sdata[tid] = d_input_image_data[data_index + ch] + 
+        d_input_image_data[data_index+offset_x + ch] + d_input_image_data[data_index+offset_y + ch] + 
+        d_input_image_data[data_index + offset_x +offset_y+ ch];
     __syncthreads();
 
-    // do reduction in shared mem
-    for (unsigned int s = 1; s < blockSize; s *= 2) {
-        if (tid % (2 * s) == 0) {
+    //// do reduction in shared mem
+    //for (unsigned int s = 1; s < blockSize; s *= 2) {
+    //    if (tid % (2 * s) == 0) {
+    //        sdata[tid] += sdata[tid + s];
+    //    }
+    //    __syncthreads();
+    //}
+
+    //for (unsigned int s = 1; s < blockSize; s *= 2) {
+    //    int index = 2 * s * tid;
+    //    if (index < blockSize) {
+    //        sdata[index] += sdata[index + s];
+    //    }
+    //    __syncthreads();
+    //}
+    for (unsigned int s = blockSize / 2; s > 0; s >>= 1) {
+        if (tid < s) {
             sdata[tid] += sdata[tid + s];
         }
         __syncthreads();
     }
-
     int T_Index = (t_y * tile_x_count + t_x) * channels;
     // write result for this block to global mem
     if (tid == 0) d_sums[T_Index+ch] = sdata[0];
@@ -144,6 +162,7 @@ void sum(int n, unsigned char* d_input_image_data, unsigned long long* d_sums
 
 //0.271ms
 //4096:6.693ms
+//1.271ms
 void cuda_stage1() {
     // Optionally during development call the skip function with the correct inputs to skip this stage
     //skip_tile_sum(&input_image, sums);
@@ -158,8 +177,8 @@ void cuda_stage1() {
     blocks.z = channels;
 
     dim3 threads;
-    threads.x = TILE_SIZE;
-    threads.y = TILE_SIZE;
+    threads.x = TILE_SIZE/2;
+    threads.y = TILE_SIZE/2;
     threads.z = 1;
     sum<<<blocks, threads >>>(tx_ty_c, d_input_image_data, d_sums
         , tile_x_count, channels,wide);
@@ -312,6 +331,25 @@ void broadcast(int w_h, unsigned char* d_output_image_data, unsigned char* mosai
         d_output_image_data[index1 +i] = mosaic_value[index2 + i];
     }
 }
+//__global__
+//void broadcast2(int w_h, unsigned char* d_output_image_data, unsigned char* mosaic_value
+//    , const int count_in_tile_line, const int count_in_img_line, const int t_size
+//    , const int tile_x_count, const int channels)
+//{
+//    unsigned int index = blockDim.x * blockIdx.x + threadIdx.x;
+//    if (index >= w_h)return;
+//    int t_y = index / count_in_tile_line;
+//    int left = index % count_in_img_line;
+//    int t_x = left / t_size;
+//
+//    int index1 = index * channels;
+//    int index2 = (t_y * tile_x_count + t_x) * channels;
+//
+//    for (size_t i = 0; i < channels; i++)
+//    {
+//        d_output_image_data[index1 + i] = mosaic_value[index2 + i];
+//    }
+//}
 
 //__global__
 //void broadcast2(int mosaic_count, unsigned char* d_output_image_data, unsigned char* d_mosaic_value
