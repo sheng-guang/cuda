@@ -17,8 +17,8 @@ unsigned long long* d_sums;
 // Pointer to device buffer for storing the output pixels of each tile, this must be passed to a kernel to be used on device
 unsigned char* d_mosaic_value;
 // Pointer to device buffer for the global pixel average sum, this must be passed to a kernel to be used on device
-unsigned long long* d_global_pixel_sum_origin;
-unsigned long long* d_global_pixel_sum_result;
+//unsigned long long* d_global_pixel_sum_origin;
+unsigned long long* d_global_sum;
 
 
 // Pointer to device image data buffer, for storing the input image, this must be passed to a kernel to be used on device
@@ -83,8 +83,8 @@ void cuda_begin(const Image* in) {
     CUDA_CALL(cudaMalloc(&d_output_image_data, w_h_c_sizeof_c));
 
     //Allocate and zero buffer for calculation global pixel average
-    CUDA_CALL(cudaMalloc(&d_global_pixel_sum_origin, tx_ty_c * sizeof(unsigned long long)));
-    CUDA_CALL(cudaMalloc(&d_global_pixel_sum_result, tx_ty_c * sizeof(unsigned long long)));
+    //CUDA_CALL(cudaMalloc(&d_global_pixel_sum_origin, tx_ty_c * sizeof(unsigned long long)));
+    CUDA_CALL(cudaMalloc(&d_global_sum, channels * sizeof(unsigned long long)));
 
 
 
@@ -110,17 +110,17 @@ int cfg1(int total, int cfg2) {
 
 //1-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 template <unsigned int blockSize>
-__device__ void last32(volatile unsigned long long* sdata, unsigned int tid) {
-    //if (blockSize >= 512) sdata[tid] += sdata[tid + 256];
-    //if (blockSize >= 256)  sdata[tid] += sdata[tid + 128];
-    //if (blockSize >= 128)  sdata[tid] += sdata[tid + 64];
+__device__ void last32(volatile unsigned long long* s_data, unsigned int tid) {
+    //if (blockSize >= 512) s_data[tid] += s_data[tid + 256];
+    //if (blockSize >= 256)  s_data[tid] += s_data[tid + 128];
+    //if (blockSize >= 128)  s_data[tid] += s_data[tid + 64];
 
-    if (blockSize >= 64) sdata[tid] += sdata[tid + 32];
-    if (blockSize >= 32) sdata[tid] += sdata[tid + 16];
-    if (blockSize >= 16) sdata[tid] += sdata[tid + 8];
-    if (blockSize >= 8) sdata[tid] += sdata[tid + 4];
-    if (blockSize >= 4) sdata[tid] += sdata[tid + 2];
-    if (blockSize >= 2) sdata[tid] += sdata[tid + 1];
+    if (blockSize >= 64) s_data[tid] += s_data[tid + 32];
+    if (blockSize >= 32) s_data[tid] += s_data[tid + 16];
+    if (blockSize >= 16) s_data[tid] += s_data[tid + 8];
+    if (blockSize >= 8) s_data[tid] += s_data[tid + 4];
+    if (blockSize >= 4) s_data[tid] += s_data[tid + 2];
+    if (blockSize >= 2) s_data[tid] += s_data[tid + 1];
 }
 
 template <unsigned int blockSize>
@@ -145,43 +145,36 @@ void sum(unsigned char* d_input_image_data, unsigned long long* d_sums
     int tid = threadIdx.y * blockDim.x + threadIdx.x;
     //int blockSize = TILE_PIXELS/4;
 
-    //int ch = blockIdx.z;
 
     for (int ch = 0; ch < channels; ch++)
     {
-        __shared__ unsigned long long sdata[blockSize];
-        sdata[tid] = d_input_image_data[data_index + ch] +
+        __shared__ unsigned long long s_data[blockSize];
+        s_data[tid] = d_input_image_data[data_index + ch] +
             d_input_image_data[data_index + offset_x + ch] + d_input_image_data[data_index + offset_y + ch] +
             d_input_image_data[data_index + offset_x + offset_y + ch];
         __syncthreads();
 
 
-        if (blockSize >= 512) { if (tid < 256) { sdata[tid] += sdata[tid + 256]; } __syncthreads(); }
-        if (blockSize >= 256) { if (tid < 128) { sdata[tid] += sdata[tid + 128]; } __syncthreads(); }
-        if (blockSize >= 128) { if (tid < 64) { sdata[tid] += sdata[tid + 64]; } __syncthreads(); }
+        if (blockSize >= 512) { if (tid < 256) { s_data[tid] += s_data[tid + 256]; } __syncthreads(); }
+        if (blockSize >= 256) { if (tid < 128) { s_data[tid] += s_data[tid + 128]; } __syncthreads(); }
+        if (blockSize >= 128) { if (tid < 64) { s_data[tid] += s_data[tid + 64]; } __syncthreads(); }
 
-        //if (blockSize >= 64) { if (tid < 32) { sdata[tid] += sdata[tid + 32]; } __syncthreads(); }
-        //if (blockSize >= 32) { if (tid < 16) { sdata[tid] += sdata[tid + 16]; } __syncthreads(); }
-        //if (blockSize >= 16) { if (tid < 8) { sdata[tid] += sdata[tid + 8]; } __syncthreads(); }
-        //if (blockSize >= 8) { if (tid < 4) { sdata[tid] += sdata[tid + 4]; } __syncthreads(); }
-        //if (blockSize >= 4) { if (tid < 2) { sdata[tid] += sdata[tid + 2]; } __syncthreads(); }
-        //if (blockSize >= 2) { if (tid < 1) { sdata[tid] += sdata[tid + 1]; } __syncthreads(); }
-        if (tid < 32) last32<blockSize>(sdata, tid);
-        //if (tid < 256) last32<blockSize>(sdata, tid);
+        //if (blockSize >= 64) { if (tid < 32) { s_data[tid] += s_data[tid + 32]; } __syncthreads(); }
+        //if (blockSize >= 32) { if (tid < 16) { s_data[tid] += s_data[tid + 16]; } __syncthreads(); }
+        //if (blockSize >= 16) { if (tid < 8) { s_data[tid] += s_data[tid + 8]; } __syncthreads(); }
+        //if (blockSize >= 8) { if (tid < 4) { s_data[tid] += s_data[tid + 4]; } __syncthreads(); }
+        //if (blockSize >= 4) { if (tid < 2) { s_data[tid] += s_data[tid + 2]; } __syncthreads(); }
+        //if (blockSize >= 2) { if (tid < 1) { s_data[tid] += s_data[tid + 1]; } __syncthreads(); }
+        if (tid < 32) last32<blockSize>(s_data, tid);
 
         int T_Index = (t_y * tile_x_count + t_x) * channels;
         // write result for this block to global mem
-        if (tid == 0) d_sums[T_Index + ch] = sdata[0];
+        if (tid == 0) d_sums[T_Index + ch] = s_data[0];
     }
-
-
 }
 
 
-//4096:6.693ms
-//1.271ms
-//1.07ms
-//0.804ms
+
 void cuda_stage1() {
     // Optionally during development call the skip function with the correct inputs to skip this stage
     //skip_tile_sum(&input_image, sums);
@@ -204,10 +197,10 @@ void cuda_stage1() {
         , tile_x_count, channels, wide);
 
 #ifdef VALIDATION
-    cudaDeviceSynchronize();
     // TODO: Uncomment and call the validation function with the correct inputs
     // You will need to copy the data back to host before passing to these functions
     // (Ensure that data copy is carried out within the ifdef VALIDATION so that it doesn't affect your benchmark results!)
+    cudaDeviceSynchronize();
     CUDA_CALL(cudaMemcpy(sums, d_sums, tx_ty_c * sizeof(unsigned long long), cudaMemcpyDeviceToHost));
     validate_tile_sum(&input_image, sums);
 #endif
@@ -216,117 +209,180 @@ void cuda_stage1() {
 //2-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
+
+
+
 //__global__
-//void average(int n, unsigned long long* d_sums, unsigned long long* d_global_pixel_sum, unsigned char* d_mosaic_value,int count,int channels)
+//void average2(int n, unsigned long long* d_sums, unsigned long long* d_global_pixel_sum, unsigned char* d_mosaic_value, int count)
 //{
 //    unsigned int index = blockDim.x * blockIdx.x + threadIdx.x;
 //    if (index >= n)return;
-//    int sum_index = index * channels;
-//    for (int i = 0; i < channels; i++)
-//    {
-//        int to = sum_index + i;
-//        d_mosaic_value[to] = d_sums[to] / count;
-//        d_global_pixel_sum[to] = d_mosaic_value[to];
-//    }
-//
+//    d_mosaic_value[index] = d_sums[index] / count;
+//    d_global_pixel_sum[index] = d_mosaic_value[index];
 //}
-__global__
-void average2(int n, unsigned long long* d_sums, unsigned long long* d_global_pixel_sum, unsigned char* d_mosaic_value, int count)
-{
-    unsigned int index = blockDim.x * blockIdx.x + threadIdx.x;
-    if (index >= n)return;
-    d_mosaic_value[index] = d_sums[index] / count;
-    d_global_pixel_sum[index] = d_mosaic_value[index];
-}
-
-
 //__global__
-//void sun_4(int count,unsigned long long* arr, unsigned long long* sum,int _channel)
+//void sun_4_v2(int count, unsigned long long* arr, unsigned long long* sum, int _channel)
 //{
-////#define _channel 3
-//    unsigned int thread_index=blockDim.x*blockIdx.x+threadIdx.x;
+//    //#define _channel 3
+//    unsigned int thread_index = blockDim.x * blockIdx.x + threadIdx.x;
 //    int to = thread_index * _channel;
-//    int tid = thread_index *4* _channel;
-//    long long re[4];
+//    int tid = thread_index * _channel * 4;
 //
-//    //printf("from to  %d  %d  \n", tid, tid + _channel * 3 + 2);
-//    
-//     for (int i = 0; i < _channel; i++)
-//     {
-//         re[i] = arr[i+tid] + arr[i+tid + _channel] + arr[i+tid + _channel * 2] + arr[i+tid + _channel * 3];
-//         //__syncthreads();
-//         //sum[to + i] = re[i];
-//     }
-//    __syncthreads();
 //    for (int i = 0; i < _channel; i++)
 //    {
-//        sum[to + i] = re[i];
+//        sum[to + i] = arr[i + tid] + arr[i + tid + _channel] + arr[i + tid + _channel * 2] + arr[i + tid + _channel * 3];
 //    }
 //
-//    //printf("set %d %d %d\n", to, to + 1, to + 2);
+//
 //}
+//
 
-__global__
-void sun_4_v2(int count, unsigned long long* arr, unsigned long long* sum, int _channel)
-{
-    //#define _channel 3
-    unsigned int thread_index = blockDim.x * blockIdx.x + threadIdx.x;
-    int to = thread_index * _channel;
-    int tid = thread_index * _channel * 4;
+template <unsigned int blockSize>
+__device__ void warpReduce(volatile unsigned long long* arr, unsigned int tid) {
+    if (blockSize >= 64) arr[tid] += arr[tid + 32];
+    if (blockSize >= 32) arr[tid] += arr[tid + 16];
+    if (blockSize >= 16) arr[tid] += arr[tid + 8];
+    if (blockSize >= 8) arr[tid] += arr[tid + 4];
+    if (blockSize >= 4) arr[tid] += arr[tid + 2];
+    if (blockSize >= 2) arr[tid] += arr[tid + 1];
+}
 
-    for (int i = 0; i < _channel; i++)
+__global__ 
+void final32(unsigned long long* d_global_sum, int channels) {
+   int blockSize=16;
+    unsigned int tid = threadIdx.x;
+    extern __shared__ unsigned long long sum[16];
+    for (int ch = 0; ch < channels; ch++)
     {
-        sum[to + i] = arr[i + tid] + arr[i + tid + _channel] + arr[i + tid + _channel * 2] + arr[i + tid + _channel * 3];
+        sum[tid] = d_global_sum[tid*channels+ch] + d_global_sum[(tid+ blockSize)*channels+ch];
+        __syncthreads();
+        warpReduce<16>(sum, tid);
+        if (tid == 0) d_global_sum[ch] = sum[0];
     }
 
+}
+
+template <unsigned int forAverage, unsigned int blockSize>
+__global__
+void aver_sum(unsigned long long* d_sums, unsigned char* d_mosaic_value, unsigned long long* d_global_sum
+    , int channels,int count) 
+{
+    unsigned int tid = threadIdx.x;
+    unsigned int gridSize = blockSize * 2 * gridDim.x;
+    //extern __shared__ unsigned long long sdata[16];
+
+    extern __shared__ unsigned long long sdata[1024];
+    //printf("enter once\n");
+    for (int ch = 0; ch < channels; ch++)
+    {
+        unsigned int i = tid + blockIdx.x * (blockSize * 2);
+        //printf("now c =%d \n", ch);
+        //printf("[%d] tid= %d\n",ch,tid);
+        sdata[tid] = 0;
+        while (i < count)
+        {
+            int index1 = i * channels + ch;
+            d_mosaic_value[index1] = d_sums[index1] / forAverage;
+            
+            int index2 = (i + blockSize) * channels + ch;
+            d_mosaic_value[index2] = d_sums[index2] / forAverage;
+            sdata[tid] += d_mosaic_value[index1] + d_mosaic_value[index2];
+            //printf("%d <- %d   %d\n", tid, i , i + blockSize);
+            //printf("%d <- %d   %d\n",tid,index1,index2);
+            i += gridSize; 
+        }
+        __syncthreads();
+        if (blockSize >= 1024) { if (tid < 512) { sdata[tid] += sdata[tid + 512]; } __syncthreads(); }
+        if (blockSize >= 512) { if (tid < 256) { sdata[tid] += sdata[tid + 256]; } __syncthreads(); }
+        if (blockSize >= 256) { if (tid < 128) { sdata[tid] += sdata[tid + 128]; } __syncthreads(); }
+        if (blockSize >= 128) { if (tid < 64) { sdata[tid] += sdata[tid + 64]; } __syncthreads(); }
+        if (tid < 32) warpReduce<blockSize>(sdata, tid);
+
+        if (tid == 0) 
+        { 
+            //printf("set  %d\n", ch);
+            //d_global_sum[gridDim.x *channels+ch] = sdata[0];
+            d_global_sum[ch] = sdata[0];
+
+        }
+    }
 
 }
+
 
 //0.167ms
 void cuda_stage2(unsigned char* output_global_average) {
     // Optionally during development call the skip function with the correct inputs to skip this stage
     //skip_compact_mosaic(tile_x_count, tile_y_count, sums, cpu_mosaic_value, output_global_average);
-    //{
-    //    int c1 = cfg1(tx_ty, 32);
-    //    average << <c1, 32 >> > (tx_ty, d_sums, d_global_pixel_sum_result, d_mosaic_value, TILE_PIXELS,channels);
-    //} 
-    {
-        int c1 = cfg1(tx_ty_c, 32);
-        average2 << <c1, 32 >> > (tx_ty_c, d_sums, d_global_pixel_sum_result, d_mosaic_value, TILE_PIXELS);
+
+    //256/32=8
+    //8 * 8 = 64;
+    
+    
+    //1024/32=32;
+    //32*32=1024;
+
+    int total = tx_ty;
+    if (wide==256) {
+#define BlockSize256  16
+        aver_sum <TILE_PIXELS, BlockSize256> << <1, BlockSize256 >> > (d_sums, d_mosaic_value, d_global_sum
+            , channels, tx_ty);
     }
+   else if (wide == 1024) {
+#define BlockSize1024  256
+        aver_sum <TILE_PIXELS, BlockSize1024> << <1, BlockSize1024 >> > (d_sums, d_mosaic_value, d_global_sum
+            , channels, tx_ty);
+    }
+   else if (wide == 2048) {
+#define BlockSize2048  256
+        aver_sum <TILE_PIXELS, BlockSize2048> << <1, BlockSize2048 >> > (d_sums, d_mosaic_value, d_global_sum
+            , channels, tx_ty);
+    }
+   else if (wide == 4096) {
+#define BlockSize4096  1024
+        aver_sum <TILE_PIXELS, BlockSize4096> << <1, BlockSize4096 >> > (d_sums, d_mosaic_value, d_global_sum
+            , channels, tx_ty);
+    }
+//    else
+//    {
+//        //printf("[256]  total number = %d \n", total);
+//#define BlockSize1 256
+//        //blocksize = 256;
+//        aver_sum <TILE_PIXELS, BlockSize1> << <1 , BlockSize1 >> > (d_sums, d_mosaic_value, d_global_sum
+//            , channels, tx_ty);
+//    }
+
+
+
+
+
     //{
+    //    int c1 = cfg1(tx_ty_c, 32);
+    //    average2 << <c1, 32 >> > (tx_ty_c, d_sums, d_global_sum, d_mosaic_value, TILE_PIXELS);
+    //}
+
+    //{
+    //    //todo count
     //    int count = tx_ty;
-    //    //printf("total= %d\n" , tx_ty_c);
-    //    while (count>=4)
+    //    while (count >= 4)
     //    {
+    //        //count/=4;
     //        count >>= 2;
-    //        //printf("count= %d\n", count);
     //        int c1 = cfg1(count, 32);
-    //        sun_4 << <c1, 32 >> > (count,d_global_pixel_sum, d_global_pixel_sum,channels);
+    //        //exchange
+    //        unsigned long long* temp = d_global_pixel_sum_origin;
+    //        d_global_pixel_sum_origin = d_global_pixel_sum_result;
+    //        d_global_pixel_sum_result = temp;
+    //        //run
+    //        sun_4_v2 << <c1, 32 >> > (count, d_global_pixel_sum_origin, d_global_pixel_sum_result, channels);
     //    }
     //}
-    {
-        //todo count
-        int count = tx_ty;
-        while (count >= 4)
-        {
-            //count/=4;
-            count >>= 2;
-            int c1 = cfg1(count, 32);
-            //exchange
-            unsigned long long* temp = d_global_pixel_sum_origin;
-            d_global_pixel_sum_origin = d_global_pixel_sum_result;
-            d_global_pixel_sum_result = temp;
-            //run
-            sun_4_v2 << <c1, 32 >> > (count, d_global_pixel_sum_origin, d_global_pixel_sum_result, channels);
-        }
-    }
 
 
     cudaDeviceSynchronize();
 
     unsigned long long arr4[] = { 0,0,0,0 };
-    CUDA_CALL(cudaMemcpy(arr4, d_global_pixel_sum_result, channels * sizeof(unsigned long long), cudaMemcpyDeviceToHost));
+    CUDA_CALL(cudaMemcpy(arr4, d_global_sum, channels * sizeof(unsigned long long), cudaMemcpyDeviceToHost));
 
 
     for (size_t i = 0; i < channels; i++)
@@ -420,7 +476,7 @@ void broadcast3(unsigned char* d_output_image_data, unsigned char* mosaic_value
         d_output_image_data[data_index + ch + offset_x + offset_y] = mosaic_value[tile_index + ch];
     }
 }
-//0.783ms
+
 void cuda_stage3() {
     //{
     //    int c1 = cfg1(w_h, 32);
@@ -470,8 +526,8 @@ void cuda_end(Image* out) {
     CUDA_CALL(cudaFree(d_sums));
     CUDA_CALL(cudaFree(d_input_image_data));
     CUDA_CALL(cudaFree(d_output_image_data));
-    CUDA_CALL(cudaFree(d_global_pixel_sum_origin));
-    CUDA_CALL(cudaFree(d_global_pixel_sum_result));
+	//CUDA_CALL(cudaFree(d_global_pixel_sum_origin));
+    CUDA_CALL(cudaFree(d_global_sum));
 
 #ifdef VALIDATION
     free(sums);
