@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <omp.h>
-//#include <iostream>
 
 Image input_image;
 Image output_image;
@@ -14,20 +13,6 @@ unsigned char* mosaic;
 int sums_count;
 int sums_len;
 
-
-//Validation Status :
-//Image width : Pass
-//Image height : Pass
-//Image pixels : Pass(0 / 16777216 wrong)
-//Global Image Average Pixel Value : Pass
-//OpenMP Average execution timing from 100 runs
-//Code built as DEBUG, timing results are invalid!
-//Init : 19.800ms
-//Stage 1 : 32.034ms
-//Stage 2 : 0.187ms
-//Stage 3 : 16.608ms
-//Free : 16.591ms
-//Total : 85.221ms
 
 void openmp_begin(const Image* in) {
     tile_x_count = in->width / TILE_SIZE;
@@ -51,7 +36,6 @@ void openmp_begin(const Image* in) {
     sums_len = sums_count * sizeof(unsigned long long);
 }
 
-//8.378ms
 void openmp_stage1() {
 
     // Reset sum memory to 0
@@ -97,7 +81,6 @@ void openmp_stage1() {
 #endif
 }
 
-//0.107ms
 void openmp_stage2(unsigned char* output_global_average) {
     // Calculate the average of each tile, and sum these to produce a whole image average.
     unsigned long long whole_image_sum[4] = { 0, 0, 0, 0 };  // Only 3 is required for the assignment, but this version hypothetically supports upto 4 channels
@@ -129,7 +112,6 @@ void openmp_stage2(unsigned char* output_global_average) {
 #endif    
 }
 
-//4.243ms
 void openmp_stage3() {
 
     int channels = input_image.channels;

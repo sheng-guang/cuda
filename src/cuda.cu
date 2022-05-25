@@ -110,11 +110,7 @@ int cfg1(int total, int cfg2) {
 
 //1-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 template <unsigned int blockSize>
-__device__ void last32(volatile unsigned long long* sdata, unsigned int tid) {
-    //if (blockSize >= 512) sdata[tid] += sdata[tid + 256];
-    //if (blockSize >= 256)  sdata[tid] += sdata[tid + 128];
-    //if (blockSize >= 128)  sdata[tid] += sdata[tid + 64];
-
+__device__ void last64(volatile unsigned long long* sdata, unsigned int tid) {
     if (blockSize >= 64) sdata[tid] += sdata[tid + 32];
     if (blockSize >= 32) sdata[tid] += sdata[tid + 16];
     if (blockSize >= 16) sdata[tid] += sdata[tid + 8];
@@ -166,8 +162,7 @@ void sum(unsigned char* d_input_image_data, unsigned long long* d_sums
         //if (blockSize >= 8) { if (tid < 4) { sdata[tid] += sdata[tid + 4]; } __syncthreads(); }
         //if (blockSize >= 4) { if (tid < 2) { sdata[tid] += sdata[tid + 2]; } __syncthreads(); }
         //if (blockSize >= 2) { if (tid < 1) { sdata[tid] += sdata[tid + 1]; } __syncthreads(); }
-        if (tid < 32) last32<blockSize>(sdata, tid);
-        //if (tid < 256) last32<blockSize>(sdata, tid);
+        if (tid < 32) last64<blockSize>(sdata, tid);
 
         int T_Index = (t_y * tile_x_count + t_x) * channels;
         // write result for this block to global mem
@@ -178,10 +173,7 @@ void sum(unsigned char* d_input_image_data, unsigned long long* d_sums
 }
 
 
-//4096:6.693ms
-//1.271ms
-//1.07ms
-//0.804ms
+
 void cuda_stage1() {
     // Optionally during development call the skip function with the correct inputs to skip this stage
     //skip_tile_sum(&input_image, sums);
@@ -239,33 +231,6 @@ void average2(int n, unsigned long long* d_sums, unsigned long long* d_global_pi
     d_global_pixel_sum[index] = d_mosaic_value[index];
 }
 
-
-//__global__
-//void sun_4(int count,unsigned long long* arr, unsigned long long* sum,int _channel)
-//{
-////#define _channel 3
-//    unsigned int thread_index=blockDim.x*blockIdx.x+threadIdx.x;
-//    int to = thread_index * _channel;
-//    int tid = thread_index *4* _channel;
-//    long long re[4];
-//
-//    //printf("from to  %d  %d  \n", tid, tid + _channel * 3 + 2);
-//    
-//     for (int i = 0; i < _channel; i++)
-//     {
-//         re[i] = arr[i+tid] + arr[i+tid + _channel] + arr[i+tid + _channel * 2] + arr[i+tid + _channel * 3];
-//         //__syncthreads();
-//         //sum[to + i] = re[i];
-//     }
-//    __syncthreads();
-//    for (int i = 0; i < _channel; i++)
-//    {
-//        sum[to + i] = re[i];
-//    }
-//
-//    //printf("set %d %d %d\n", to, to + 1, to + 2);
-//}
-
 __global__
 void sun_4_v2(int count, unsigned long long* arr, unsigned long long* sum, int _channel)
 {
@@ -282,29 +247,14 @@ void sun_4_v2(int count, unsigned long long* arr, unsigned long long* sum, int _
 
 }
 
-//0.167ms
 void cuda_stage2(unsigned char* output_global_average) {
     // Optionally during development call the skip function with the correct inputs to skip this stage
     //skip_compact_mosaic(tile_x_count, tile_y_count, sums, cpu_mosaic_value, output_global_average);
-    //{
-    //    int c1 = cfg1(tx_ty, 32);
-    //    average << <c1, 32 >> > (tx_ty, d_sums, d_global_pixel_sum_result, d_mosaic_value, TILE_PIXELS,channels);
-    //} 
+
     {
         int c1 = cfg1(tx_ty_c, 32);
         average2 << <c1, 32 >> > (tx_ty_c, d_sums, d_global_pixel_sum_result, d_mosaic_value, TILE_PIXELS);
     }
-    //{
-    //    int count = tx_ty;
-    //    //printf("total= %d\n" , tx_ty_c);
-    //    while (count>=4)
-    //    {
-    //        count >>= 2;
-    //        //printf("count= %d\n", count);
-    //        int c1 = cfg1(count, 32);
-    //        sun_4 << <c1, 32 >> > (count,d_global_pixel_sum, d_global_pixel_sum,channels);
-    //    }
-    //}
     {
         //todo count
         int count = tx_ty;
@@ -322,9 +272,7 @@ void cuda_stage2(unsigned char* output_global_average) {
         }
     }
 
-
     cudaDeviceSynchronize();
-
     unsigned long long arr4[] = { 0,0,0,0 };
     CUDA_CALL(cudaMemcpy(arr4, d_global_pixel_sum_result, channels * sizeof(unsigned long long), cudaMemcpyDeviceToHost));
 
@@ -420,7 +368,7 @@ void broadcast3(unsigned char* d_output_image_data, unsigned char* mosaic_value
         d_output_image_data[data_index + ch + offset_x + offset_y] = mosaic_value[tile_index + ch];
     }
 }
-//0.783ms
+
 void cuda_stage3() {
     //{
     //    int c1 = cfg1(w_h, 32);
