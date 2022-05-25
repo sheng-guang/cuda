@@ -16,8 +16,6 @@
 #include "cuda.cuh"
 #include "helper.h"
 
-
-
 int main(int argc, char **argv)
 {
     // Parse args
@@ -375,10 +373,4 @@ const char *mode_to_string(Mode m) {
       return "CUDA";
     }
     return "?";
-}
-
-
-
-int ex(int argc, char** argv) {
-    return main(argc, argv);
 }

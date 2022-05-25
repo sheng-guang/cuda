@@ -116,7 +116,7 @@ int getStage3SkipUsed();
 #endif
 
 #if defined(_DEBUG) || defined(DEBUG)
-//#define VALIDATION
+#define VALIDATION
 #endif
 
 #endif  // __helper_h__

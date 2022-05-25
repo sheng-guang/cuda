@@ -16,7 +16,7 @@ unsigned char* cpu_mosaic_value;
 ///
 /// Implementation
 ///
-void cpu_begin(const Image* input_image) {
+void cpu_begin(const Image *input_image) {
     cpu_TILES_X = input_image->width / TILE_SIZE;
     cpu_TILES_Y = input_image->height / TILE_SIZE;
 
@@ -25,15 +25,15 @@ void cpu_begin(const Image* input_image) {
 
     // Allocate buffer for storing the output pixel value of each tile
     cpu_mosaic_value = (unsigned char*)malloc(cpu_TILES_X * cpu_TILES_Y * input_image->channels * sizeof(unsigned char));
-
+    
     // Allocate copy of input image
     cpu_input_image = *input_image;
-    cpu_input_image.data = (unsigned char*)malloc(input_image->width * input_image->height * input_image->channels * sizeof(unsigned char));
+    cpu_input_image.data = (unsigned char *)malloc(input_image->width * input_image->height * input_image->channels * sizeof(unsigned char));
     memcpy(cpu_input_image.data, input_image->data, input_image->width * input_image->height * input_image->channels * sizeof(unsigned char));
 
     // Allocate output image
     cpu_output_image = *input_image;
-    cpu_output_image.data = (unsigned char*)malloc(input_image->width * input_image->height * input_image->channels * sizeof(unsigned char));
+    cpu_output_image.data = (unsigned char *)malloc(input_image->width * input_image->height * input_image->channels * sizeof(unsigned char));
 }
 void cpu_stage1() {
     // Reset sum memory to 0
@@ -63,7 +63,7 @@ void cpu_stage1() {
 }
 void cpu_stage2(unsigned char* output_global_average) {
     // Calculate the average of each tile, and sum these to produce a whole image average.
-    unsigned long long whole_image_sum[4] = { 0, 0, 0, 0 };  // Only 3 is required for the assignment, but this version hypothetically supports upto 4 channels
+    unsigned long long whole_image_sum[4] = {0, 0, 0, 0};  // Only 3 is required for the assignment, but this version hypothetically supports upto 4 channels
     for (unsigned int t = 0; t < cpu_TILES_X * cpu_TILES_Y; ++t) {
         for (int ch = 0; ch < cpu_input_image.channels; ++ch) {
             cpu_mosaic_value[t * cpu_input_image.channels + ch] = (unsigned char)(cpu_mosaic_sum[t * cpu_input_image.channels + ch] / TILE_PIXELS);  // Integer division is fine here
@@ -85,7 +85,7 @@ void cpu_stage3() {
         for (unsigned int t_y = 0; t_y < cpu_TILES_Y; ++t_y) {
             const unsigned int tile_index = (t_y * cpu_TILES_X + t_x) * cpu_input_image.channels;
             const unsigned int tile_offset = (t_y * cpu_TILES_X * TILE_SIZE * TILE_SIZE + t_x * TILE_SIZE) * cpu_input_image.channels;
-
+            
             // For each pixel within the tile
             for (unsigned int p_x = 0; p_x < TILE_SIZE; ++p_x) {
                 for (unsigned int p_y = 0; p_y < TILE_SIZE; ++p_y) {
@@ -100,7 +100,7 @@ void cpu_stage3() {
     validate_broadcast(&cpu_input_image, cpu_mosaic_value, &cpu_output_image);
 #endif
 }
-void cpu_end(Image* output_image) {
+void cpu_end(Image *output_image) {
     // Store return value
     output_image->width = cpu_output_image.width;
     output_image->height = cpu_output_image.height;

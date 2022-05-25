@@ -56,7 +56,7 @@ void openmp_stage1() {
 
     // Reset sum memory to 0
     memset(sums, 0, tile_x_count * tile_y_count * input_image.channels * sizeof(unsigned long long));
-       
+
     // Sum pixel data within each tile
     int channels = input_image.channels;
     int wide = input_image.width;
@@ -71,13 +71,13 @@ void openmp_stage1() {
             int ch;
             //#pragma omp parallel for
             for (ch = 0; ch < channels; ++ch) {
-                
+
                 long long sum = 0;
                 int p_y;
 #pragma omp parallel for reduction(+: sum) num_threads(8)
                 for (p_y = 0; p_y < TILE_SIZE; ++p_y) {
                     int p_x;
-                for ( p_x = 0; p_x < TILE_SIZE; ++p_x) {
+                    for (p_x = 0; p_x < TILE_SIZE; ++p_x) {
                         // For each colour channel
                         const unsigned int pixel_offset = (p_y * wide + p_x) * channels;
                         // Load pixel
@@ -105,11 +105,11 @@ void openmp_stage2(unsigned char* output_global_average) {
     int tile_x_y_total = tile_x_count * tile_y_count;
 
     int ch;
-    #pragma omp parallel for
+#pragma omp parallel for
     for (ch = 0; ch < channels; ++ch) {
         int t;
-        long long sum=0;
-        #pragma omp parallel for reduction(+: sum)
+        long long sum = 0;
+#pragma omp parallel for reduction(+: sum)
         for (t = 0; t < tile_x_y_total; ++t) {
             mosaic[t * channels + ch] = (unsigned char)(sums[t * channels + ch] / TILE_PIXELS);  // Integer division is fine here
             sum += mosaic[t * channels + ch];
@@ -119,7 +119,7 @@ void openmp_stage2(unsigned char* output_global_average) {
 
     // Reduce the whole image sum to whole image average for the return value
     //int ch;
-    #pragma omp parallel for
+#pragma omp parallel for
     for (ch = 0; ch < channels; ++ch) {
         output_global_average[ch] = (unsigned char)(whole_image_sum[ch] / (tile_x_y_total));
     }
@@ -137,23 +137,23 @@ void openmp_stage3() {
     // Broadcast the compact mosaic pixels back out to the full image size
     // For each tile
 
-    int t_x; 
+    int t_x;
 #pragma omp parallel for
-    for ( t_x = 0; t_x < tile_x_count; ++t_x) {
+    for (t_x = 0; t_x < tile_x_count; ++t_x) {
 
         int t_y;
 #pragma omp parallel for
-        for ( t_y = 0; t_y < tile_y_count; ++t_y) {
+        for (t_y = 0; t_y < tile_y_count; ++t_y) {
             const unsigned int tile_index = (t_y * tile_x_count + t_x) * channels;
             const unsigned int tile_offset = (t_y * tile_x_count * TILE_SIZE * TILE_SIZE + t_x * TILE_SIZE) * channels;
 
             // For each pixel within the tile
             int p_y;
-           
+
 #pragma omp parallel for 
             for (p_y = 0; p_y < TILE_SIZE; ++p_y) {
                 int p_x;
-//#pragma omp parallel for
+                //#pragma omp parallel for
                 for (p_x = 0; p_x < TILE_SIZE; ++p_x) {
 
 

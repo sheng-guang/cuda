@@ -43,7 +43,7 @@ unsigned char* cpu_mosaic_value;
 Image output_image;
 #endif
 
-void cuda_begin(const Image *in) {
+void cuda_begin(const Image* in) {
     // These are suggested CUDA memory allocations that match the CPU implementation
     // If you would prefer, you can rewrite this function (and cuda_end()) to suit your preference
 
@@ -71,7 +71,7 @@ void cuda_begin(const Image *in) {
     // Allocate copy of input image
     input_image = *in;
     input_image.data = (unsigned char*)malloc(w_h_c_sizeof_c);
-    channels= input_image.channels;
+    channels = input_image.channels;
     wide = input_image.width;
     memcpy(input_image.data, in->data, w_h_c_sizeof_c);
 
@@ -97,7 +97,7 @@ void cuda_begin(const Image *in) {
 
 
 
-int cfg1(int total,int cfg2) {
+int cfg1(int total, int cfg2) {
     int re = total / cfg2;
     if (total % cfg2 != 0)re++;
     return re;
@@ -125,8 +125,8 @@ __device__ void last32(volatile unsigned long long* sdata, unsigned int tid) {
 
 template <unsigned int blockSize>
 __global__
-void sum( unsigned char* d_input_image_data, unsigned long long* d_sums
-    ,int tile_x_count,int channels,int wide) 
+void sum(unsigned char* d_input_image_data, unsigned long long* d_sums
+    , int tile_x_count, int channels, int wide)
 {
     int t_x = blockIdx.x;
     int t_y = blockIdx.y;
@@ -139,8 +139,8 @@ void sum( unsigned char* d_input_image_data, unsigned long long* d_sums
     unsigned int pixel_offset = (p_y * wide + p_x) * channels;
     int data_index = tile_offset + pixel_offset;
 
-    int offset_x = TILE_SIZE / 2*channels;
-    int offset_y = TILE_SIZE / 2 * wide*channels;
+    int offset_x = TILE_SIZE / 2 * channels;
+    int offset_y = TILE_SIZE / 2 * wide * channels;
 
     int tid = threadIdx.y * blockDim.x + threadIdx.x;
     //int blockSize = TILE_PIXELS/4;
@@ -159,7 +159,7 @@ void sum( unsigned char* d_input_image_data, unsigned long long* d_sums
         if (blockSize >= 512) { if (tid < 256) { sdata[tid] += sdata[tid + 256]; } __syncthreads(); }
         if (blockSize >= 256) { if (tid < 128) { sdata[tid] += sdata[tid + 128]; } __syncthreads(); }
         if (blockSize >= 128) { if (tid < 64) { sdata[tid] += sdata[tid + 64]; } __syncthreads(); }
-        
+
         //if (blockSize >= 64) { if (tid < 32) { sdata[tid] += sdata[tid + 32]; } __syncthreads(); }
         //if (blockSize >= 32) { if (tid < 16) { sdata[tid] += sdata[tid + 16]; } __syncthreads(); }
         //if (blockSize >= 16) { if (tid < 8) { sdata[tid] += sdata[tid + 8]; } __syncthreads(); }
@@ -196,12 +196,12 @@ void cuda_stage1() {
     blocks.z = 1;
 
     dim3 threads;
-    threads.x = TILE_SIZE/2;
-    threads.y = TILE_SIZE/2;
+    threads.x = TILE_SIZE / 2;
+    threads.y = TILE_SIZE / 2;
     threads.z = 1;
 
-    sum<TILE_PIXELS / 4> <<<blocks, threads >>>( d_input_image_data, d_sums
-        , tile_x_count, channels,wide);
+    sum<TILE_PIXELS / 4> << <blocks, threads >> > (d_input_image_data, d_sums
+        , tile_x_count, channels, wide);
 
 #ifdef VALIDATION
     cudaDeviceSynchronize();
@@ -209,7 +209,7 @@ void cuda_stage1() {
     // You will need to copy the data back to host before passing to these functions
     // (Ensure that data copy is carried out within the ifdef VALIDATION so that it doesn't affect your benchmark results!)
     CUDA_CALL(cudaMemcpy(sums, d_sums, tx_ty_c * sizeof(unsigned long long), cudaMemcpyDeviceToHost));
-     validate_tile_sum(&input_image, sums);
+    validate_tile_sum(&input_image, sums);
 #endif
 }
 
@@ -272,7 +272,7 @@ void sun_4_v2(int count, unsigned long long* arr, unsigned long long* sum, int _
     //#define _channel 3
     unsigned int thread_index = blockDim.x * blockIdx.x + threadIdx.x;
     int to = thread_index * _channel;
-    int tid = thread_index  * _channel*4;
+    int tid = thread_index * _channel * 4;
 
     for (int i = 0; i < _channel; i++)
     {
@@ -452,11 +452,11 @@ void cuda_stage3() {
     // You will need to copy the data back to host before passing to these functions
     // (Ensure that data copy is carried out within the ifdef VALIDATION so that it doesn't affect your benchmark results!)
     cudaDeviceSynchronize();
-    CUDA_CALL(cudaMemcpy(output_image.data,d_output_image_data , w_h_c_sizeof_c, cudaMemcpyDeviceToHost));
+    CUDA_CALL(cudaMemcpy(output_image.data, d_output_image_data, w_h_c_sizeof_c, cudaMemcpyDeviceToHost));
     validate_broadcast(&input_image, cpu_mosaic_value, &output_image);
 #endif    
 }
-void cuda_end(Image *out) {
+void cuda_end(Image* out) {
     // This function matches the provided cuda_begin(), you may change it if desired
 
     // Store return value
